@@ -37,7 +37,7 @@ class Gate(object):
 		if 0 <= index < len(self._outputs):
 			self._outputs[index] = value
 		else:
-			raise GateException("No output pin %s on this gate." % index)
+			raise GateException("No output pin %s on gate %s." % (index, self.__class__.__name__))
 
 	def _recomputeOutputs(self):
 		""" Reimplement in subclass """
@@ -244,6 +244,31 @@ class TwoToOneMux(Gate):
 		elif pin == 2:
 			self.and0.setIn(0, val)
 
+class FourWayOr(Gate):
+	def __init__(self):
+		super(FourWayOr, self).__init__(4, 1)
+		self.or0 = Or()
+		self.or1 = Or()
+		self.or2 = Or()
+		self.pc = PinConnector()
+		self.pc.connect(self.or0, 0, self.or2, 0)
+		self.pc.connect(self.or1, 0, self.or2, 1)
+		self._outputs = self.or2._outputs
+
+	def setIn(self, pin, val):
+		if not (0 <= pin < self.nInputs):
+			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
+		self._inputs[pin] = val
+		if pin == 0:
+			self.or0.setIn(0, val)
+		elif pin == 1:
+			self.or0.setIn(1, val)
+		elif pin == 2:
+			self.or1.setIn(0, val)
+		elif pin == 3:
+			self.or1.setIn(1, val)
+
+
 if __name__ == '__main__':
 	print "--------And gate-------"
 	enumeratePins(And())
@@ -261,6 +286,8 @@ if __name__ == '__main__':
 	enumeratePins(Xnor())
 	print "--------TwoToOneMux----"
 	enumeratePins(TwoToOneMux())
+	print "--------FourWayOr------"
+	enumeratePins(FourWayOr())
 
 	# nodes = map(lambda x: Node(x), range(4))
 	# nodes[0].addChild(nodes[1])
