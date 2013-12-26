@@ -85,40 +85,6 @@ class Xor(Gate):
 	def _recomputeOutputs(self):
 		self._setOut(0, self._inputs[0] ^ self._inputs[1])
 
-
-class Node(object):
-	def __init__(self, payload = None):
-		self.children = []		# the children are ordered by insertion time
-		self.payload = payload
-
-	def addChild(self, value):
-		if type(value) != Node:
-			value = Node(value)
-		if value not in self.children:
-			self.children.append(value)
-
-	def __cmp__(self, other):
-		return cmp(self.payload, other.payload)
-
-	def __hash__(self):
-		return hash(str(self))
-
-	@staticmethod
-	def printGraph(node):
-		frontier = [node]
-		seenNodes = set()
-		while len(frontier) > 0:
-			n = frontier.pop()
-			seenNodes.add(n)
-			print "%s -> %s" % (n.payload, map(lambda x: x.payload, n.children))
-			frontier += filter(lambda x: not (x in seenNodes or x in frontier), n.children)
-
-	def __str__(self):
-		return "Node[%s]" % self.payload
-
-	def __repr__(self):
-		return str(self)
-
 class PinConnector(object):
 	"""
 	This is a class to manage connections between pins of different gates.
@@ -159,6 +125,8 @@ class PinConnector(object):
 			for (fromPin, toGate, toPin) in self._connections[fromGate]:
 				toGate.setIn(toPin, fromGate.getOut(fromPin))
 		fromGate.setIn = f
+		for i, v in enumerate(fromGate._inputs):
+			fromGate.setIn(i, v)
 
 	def __str__(self):
 		result = "PinConnector["
@@ -171,7 +139,6 @@ class PinConnector(object):
 	def __repr__(self):
 		return str(self)
 
-
 class Nand(Gate):
 	""" A NAND gate created with an AND and a NOT gate """
 	def __init__(self):
@@ -182,9 +149,6 @@ class Nand(Gate):
 		self.pc.connect(self.andGate, 0, self.notGate, 0)
 		self._inputs = self.andGate._inputs
 		self._outputs = self.notGate._outputs
-
-		self.setIn(0, False)
-		self.setIn(0, False)
 
 	def setIn(self, pin, value):
 		self.andGate.setIn(pin, value)
@@ -200,9 +164,6 @@ class Nor(Gate):
 		self._inputs = self.orGate._inputs
 		self._outputs = self.notGate._outputs
 
-		self.setIn(0, False)
-		self.setIn(0, False)
-
 	def setIn(self, pin, value):
 		self.orGate.setIn(pin, value)
 
@@ -216,9 +177,6 @@ class Xnor(Gate):
 		self.pc.connect(self.xorGate, 0, self.notGate, 0)
 		self._inputs = self.xorGate._inputs
 		self._outputs = self.notGate._outputs
-
-		self.setIn(0, False)
-		self.setIn(0, False)
 
 	def setIn(self, pin, value):
 		self.xorGate.setIn(pin, value)
@@ -240,6 +198,52 @@ def enumeratePins(gate):
 			gate.setIn(pin, val)
 		print gate
 
+#
+# In1-----------AND--------|
+# In0------NOT---|         |
+#	   |                   OR---OUT
+#      |---------|         |
+#				 |         |
+# In2-----------AND--------|
+#
+# Here In0 is the selector.
+#	In0 = 0 selects In1
+#	In0 = 1 selects In2
+#
+class TwoToOneMux(Gate):
+	""" 
+	A two-to-one multiplexer. 
+	Pins 0 and 1 are the two inputs.
+	Pin 2 is the selector:
+		Set pin 2 to zero to select pin 0.
+		Set pin 2 to one to select pin 1.
+	"""
+	def __init__(self):
+		super(TwoToOneMux, self).__init__(3, 1)
+		self.pc = PinConnector()
+		self.and0 = And()
+		self.and1 = And()
+		self.notGate = Not()
+		self.orGate = Or()
+
+		self.pc.connect(self.and0, 0, self.orGate, 0)
+		self.pc.connect(self.and1, 0, self.orGate, 1)
+		# the selector is hooked up to pin 1 on each of the and gates
+		self.pc.connect(self.notGate, 0, self.and0, 1)
+		self._outputs = self.orGate._outputs
+
+	def setIn(self, pin, val):
+		if not (0 <= pin < self.nInputs):
+			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
+		self._inputs[pin] = val
+		if pin == 0:
+			self.notGate.setIn(0, val)
+			self.and1.setIn(1, val)
+		elif pin == 1:
+			self.and1.setIn(0, val)
+		elif pin == 2:
+			self.and0.setIn(0, val)
+
 if __name__ == '__main__':
 	print "--------And gate-------"
 	enumeratePins(And())
@@ -255,6 +259,8 @@ if __name__ == '__main__':
 	enumeratePins(Nor())
 	print "--------Xnor gate------"
 	enumeratePins(Xnor())
+	print "--------TwoToOneMux----"
+	enumeratePins(TwoToOneMux())
 
 	# nodes = map(lambda x: Node(x), range(4))
 	# nodes[0].addChild(nodes[1])
