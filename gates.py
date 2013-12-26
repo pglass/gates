@@ -29,7 +29,7 @@ class Gate(object):
 	def getOut(self, index):
 		""" Get the current value of an output pin """
 		if 0 <= index < len(self._inputs):
-			return self._inputs[index]
+			return self._outputs[index]
 		raise GateException("No output pin %s on this gate." % index)
 
 	def _setOut(self, index, value):
@@ -39,7 +39,7 @@ class Gate(object):
 		else:
 			raise GateException("No output pin %s on this gate." % index)
 
-	def _recomputeOutputs():
+	def _recomputeOutputs(self):
 		""" Reimplement in subclass """
 		raise NotImplementedError("Don't instantiate this base class")
 
@@ -119,37 +119,27 @@ class Node(object):
 	def __repr__(self):
 		return str(self)
 
-# # what is the point of this?
-# class PinMapper(Gate):
-# 	""" A pin mapper forwards pin values """
-
-# 	def __init__(self, size):
-# 		super(PinMapper, self).__init__(size, size)
-
-# 	def _recomputeOutputs():
-# 		for i in xrange(self.nInputs):
-# 			self._setOut(i, self._inputs[i])
-
 class PinConnector(object):
 	"""
-	This connects an output pin of one gate to the input pin of another gate.
-	For example, to connect the output pins of 2 AND gates to the input pins of an OR gate:
+	This is a class to manage connections between pins of different gates.
+	You should generally only need one instance of this class for a set of gates.
+	For example:
 		and1 = And()
 		and2 = And()
-		or = Or()
+		orGate = Or()
 		p = PinConnector()
-		p.connect(and1, 0, or, 0)  # connect and1 output pin 0 to or input pin 0
-		p.connect(and2, 0, or, 1)  # connect and2 output pin 0 to or input pin 1
-	Then you can route these connections:
-		p.setInput(and1, 0, True)	# set input pin 0 of and1 to True
-		p.setInput(and1, 1, True)	# set input pin 1 of and1 to True
-	Now and1 output 0 has value True while and and2 output 1 has value False,
-	so the OR gate is receiving True on input 0 and FAlse on input 1.
-	You can access these in either of the following ways:
-		p.getOutput(or, 0)	# returns True
-		or.getOut(0)		# returns True
+		p.connect(and1, 0, orGate, 0)	# connect output 0 of and1 to input 0 of orGate
+		p.connect(and2, 0, orGate, 1)   # connect output 0 of and2 to input 0 of orGate
+	This works by altering the setIn method of each `and1` and `and2` to additionally
+	copy the new output value to the apprioriate pin on the orGate. That means you
+	can do the following:
+		and1.setIn(0, True)
+		and1.setIn(1, True)
+	And you will see:
+		print orGate.getOut(0) 	# True
 
-	WARNING: This doesn't handle recursive connections.
+
+	WARNING: This does not handle recursive connections
 	"""
 	def __init__(self):
 		self._connections = {}
@@ -162,111 +152,76 @@ class PinConnector(object):
 		else:
 			self._connections[fromGate] = [entry]
 
-	def setInput(self, gate, pin, value):
-		"""
-		Set the given input pin on the given gate to the given value.
-		Raises a GateException if the gate does not have an output pin
-			connected to any other gate's input pin.
-		"""
-		if gate not in self._connections:
-			raise GateException("Gate %s has no connections to any other gates in this PinConnector" % gate)
-		gate.setIn(pin, bool(value))
-
-		for (fromPin, toGate, toPin) in self._connections[gate]:
-			toGate.setIn(toPin, gate.getOut(fromPin))
-
-	def getOutput(self, gate, pin):
-		return gate.getOut(pin)
+		# alter fromGate.setIn to update the pins it's connected to
+		setIn = fromGate.setIn
+		def f(p, v):
+			setIn(p, bool(v))
+			for (fromPin, toGate, toPin) in self._connections[fromGate]:
+				toGate.setIn(toPin, fromGate.getOut(fromPin))
+		fromGate.setIn = f
 
 	def __str__(self):
-		result = "PinConnector[\n"
+		result = "PinConnector["
 		for gate, entry in self._connections.iteritems():
-			result += "  %s -> %s,\n" % (gate, entry)
+			result += "\n  %s -> %s," % (gate, entry)
+		if result.endswith(','):
+			result = result[:-1] + "\n"
 		return result + "]"
 
 	def __repr__(self):
 		return str(self)
 
-# Problems with this
-#	1. How to compute the output pins?
-#		If the user specifies some number of output pins,
-#		how do we check this? If they ask for the value on
-#		some output pin, how do I find it?
-#	2. How do we cherry-pick pins when we connect gates together?
-#		Can we connect output pin0 of andGate0 and output pin1 of andGate1
-#		to the inputs of a single Or gate?
-#
-class Connector(Gate):
-	""" 
-	This connects gates together.
-	For example, you could create a NAND by connecting an AND gate and a NOT gate:
-		andGate = And()
-		notGate = Not()
-		nandGate = Connector()
-		pins = c.addInputGate(andGate)	 # important to use the same andGate instance here
-		c.connect(andGate, OrGate)		 # and here
-	"""
 
-	def __init__(self, nInputs, nOutputs):
-		super(Connector, self).__init__(nInputs, nOutputs)
-		self._gates = set()
-		self._inputGates = []
+class Nand(Gate):
+	""" A NAND gate created with an AND and a NOT gate """
+	def __init__(self):
+		super(Nand, self).__init__(2, 1)
+		self.andGate = And()
+		self.notGate = Not()
+		self.pc = PinConnector()
+		self.pc.connect(self.andGate, 0, self.notGate, 0)
+		self._inputs = self.andGate._inputs
+		self._outputs = self.notGate._outputs
 
-	def addInputGate(self, gate):
-		""" 
-		The given gate is attached to the next free pin(s).
-		Raises a GateException if not enough pins for the gate.
-		Returns the indices of the pins that are reserved for the gate.
-		"""
+		self.setIn(0, False)
+		self.setIn(0, False)
 
-		if len(self._inputs) + gate.nInputs >= self.nInputs:
-			raise GateException("Not enough pins to add this gate %s (%s/%s are filled) " 
-				% (gate, len(self._inputs), self.nInputs))
-		
-		self._inputs += ([0] * gate.nInputs)
-		self._gates.add(Node(gate))			 	# gives us all the gates
-		self._inputGates.append(Node(gate))		# gives us the input gates
+	def setIn(self, pin, value):
+		self.andGate.setIn(pin, value)
 
-		return range(len(self._inputs) - gate.nInputs, len(self._inputs))
+class Nor(Gate):
+	""" A NOR gate created with and OR and a NOT """
+	def __init__(self):
+		super(Nor, self).__init__(2, 1)
+		self.orGate = Or()
+		self.notGate = Not()
+		self.pc = PinConnector()
+		self.pc.connect(self.orGate, 0, self.notGate, 0)
+		self._inputs = self.orGate._inputs
+		self._outputs = self.notGate._outputs
 
-	def _findGateNode(self, gate):
-		for x in self._gates:
-			if x.payload == gate:
-				return x
-		raise None
+		self.setIn(0, False)
+		self.setIn(0, False)
 
-	def connect(self, a, b):
-		"""
-		Connect the output pins of gate a (which must already exist in this connector) 
-		to the input pins of gate b. A GateException is raised if a does not have the
-		same number of output pins as b has input pins
-		"""
-		n = self._findGateNode(a)
-		if n == None:
-			raise GateException("No gate %s found to connect to %s" % (a, b))
-		elif a.nOutputs != b.nInputs:
-			raise GateException("Cannot connect gate %s (%s outputs) to %s (%s inputs)" 
-				% (a, a.nOutputs, b, b.nInputs))
-		n.addChild(Node(b))
+	def setIn(self, pin, value):
+		self.orGate.setIn(pin, value)
 
-	def _sendCurrent(self, gateNode):
-		""" 
-		Starting from gateNode, set the output pins from gateNode to the
-		pins of its children.
-		"""
+class Xnor(Gate):
+	""" An XNOR gate create with an XOR and a NOT """
+	def __init__(self):
+		super(Xnor, self).__init__(2, 1)
+		self.xorGate = Xor()
+		self.notGate = Not()
+		self.pc = PinConnector()
+		self.pc.connect(self.xorGate, 0, self.notGate, 0)
+		self._inputs = self.xorGate._inputs
+		self._outputs = self.notGate._outputs
 
+		self.setIn(0, False)
+		self.setIn(0, False)
 
-	def _recomputeOutputs(self):
-		pin = 0
-		for gateNode in self._inputGates:
-			gate = gateNode.payload
-			for i in xrange(gate.nInputs):
-				gate.setIn(i, self._inputs[pin])
-				pin += 1
-			endNode = self._sendCurrent(gateNode)
-
-
-
+	def setIn(self, pin, value):
+		self.xorGate.setIn(pin, value)
 
 def cross_product(x, y):
 	return [[a, b] for a in x for b in y]
@@ -281,19 +236,25 @@ def cross(x, size):
 
 def enumeratePins(gate):
 	for pins in cross([0, 1], gate.nInputs):
-		for i, p in enumerate(pins):
-			gate.setIn(i, p)
+		for pin, val in enumerate(pins):
+			gate.setIn(pin, val)
 		print gate
 
 if __name__ == '__main__':
-	# print "--------And gate-------"
-	# enumeratePins(And())
-	# print "--------Or gate--------"
-	# enumeratePins(Or())
-	# print "--------Not gate-------"
-	# enumeratePins(Not())
-	# print "--------Xor gate-------"
-	# enumeratePins(Xor())
+	print "--------And gate-------"
+	enumeratePins(And())
+	print "--------Or gate--------"
+	enumeratePins(Or())
+	print "--------Not gate-------"
+	enumeratePins(Not())
+	print "--------Xor gate-------"
+	enumeratePins(Xor())
+	print "--------Nand gate------"
+	enumeratePins(Nand())
+	print "--------Nor gate------"
+	enumeratePins(Nor())
+	print "--------Xnor gate------"
+	enumeratePins(Xnor())
 
 	# nodes = map(lambda x: Node(x), range(4))
 	# nodes[0].addChild(nodes[1])
@@ -304,17 +265,17 @@ if __name__ == '__main__':
 	# nodes[2].addChild(nodes[3])
 	# Node.printGraph(nodes[0])
 
-	and1 = And()
-	and2 = And()
-	orGate = Or()
-	p = PinConnector()
-	print p
-	p.connect(and1, 0, orGate, 0)
-	p.connect(and2, 0, orGate, 1)
-	print p
-	print orGate
-	p.setInput(and1, 0, True)
-	p.setInput(and1, 1, True)
-	print and1
-	print p
-	print 
+	# and1 = And()
+	# and2 = And()
+	# orGate = Or()
+	# p = PinConnector()
+	# print p
+	# p.connect(and1, 0, orGate, 0)
+	# p.connect(and2, 0, orGate, 1)
+	# print p
+	# and1.setIn(0, True)
+	# print and1
+	# print orGate
+	# and1.setIn(1, True)
+	# print and1
+	# print orGate
