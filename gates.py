@@ -194,13 +194,10 @@ class Xnor(TwoGateChain):
     def __init__(self):
         super(Xnor, self).__init__(Xor(), Not())
 
-def cross_product(x, y): 
-    return [[a, b] for a in x for b in y]
-
 def cross(x, size):
     if size <= 1:
         return [[a] for a in x]
-    result = cross_product(x, x)
+    result = [[a, b] for a in x for b in x]
     for n in xrange(size - 2):
         result = [a + [b] for a in result for b in x]
     return result
@@ -216,9 +213,9 @@ class Fan(Gate):
     def __init__(self, nOutputs):
         super(Fan, self).__init__(1, nOutputs)
 
-    @overrides
+    @overrides(Gate)
     def refreshOutputs(self):
-        for i in len(self._outputs):
+        for i in xrange(len(self._outputs)):
             self._outputs[i].value = self._inputs[0].value
 
 #
@@ -263,10 +260,49 @@ class TwoToOneMux(Gate):
         self.and2.getOutPin(0).addConnection(self.orGate.getInPin(1))
 
         # set the output pins
-        self.setOutPin(0, self.orGate.getOutPin)
+        self.setOutPin(0, self.orGate.getOutPin(0))
 
 
+#
+# In0----------|
+#              AND1---OUT
+# In1---|      |
+#       AND2---|
+# In2---|
+#
+class ThreeWayAnd(Gate):
+    def __init__(self):
+        super(ThreeWayAnd, self).__init__(3, 1)
+        self.and1 = And()
+        self.and2 = And()
+        self.setInPin(0, self.and1.getInPin(0))
+        self.setInPin(1, self.and2.getInPin(0))
+        self.setInPin(2, self.and2.getInPin(1))
+        self.and2.getOutPin(0).addConnection(self.and1.getInPin(1))
+        self.setOutPin(0, self.and1.getOutPin(0))
 
+#
+# In0----|
+#        AND1----|
+# In1----|       |
+#                AND3----OUT
+# In2----|       |
+#        AND2----|
+# In3----|
+#
+class FourWayAnd(Gate):
+    def __init__(self):
+        super(FourWayAnd, self).__init__(4, 1)
+        self.and1 = And()
+        self.and2 = And()
+        self.and3 = And()
+        self.setInPin(0, self.and1.getInPin(0))
+        self.setInPin(1, self.and1.getInPin(1))
+        self.setInPin(2, self.and2.getInPin(0))
+        self.setInPin(3, self.and2.getInPin(1))
+        self.and1.getOutPin(0).addConnection(self.and3.getInPin(0))
+        self.and2.getOutPin(0).addConnection(self.and3.getInPin(1))
+        self.setOutPin(0, self.and3.getOutPin(0))
 
 #
 # In0----|
@@ -283,13 +319,99 @@ class FourWayOr(Gate):
         self.or1 = Or()
         self.or2 = Or()
         self.or3 = Or()
+        # set the input pins
         self.setInPin(0, self.or1.getInPin(0))
         self.setInPin(1, self.or1.getInPin(1))
         self.setInPin(2, self.or2.getInPin(0))
         self.setInPin(3, self.or2.getInPin(1))
+        # connect encaspulated gates
         self.or1.getOutPin(0).addConnection(self.or3.getInPin(0))
         self.or2.getOutPin(0).addConnection(self.or3.getInPin(1))
+        # set the output pins
         self.setOutPin(0, self.or3.getOutPin(0))
+
+
+"""
+O indicates wires do not cross
+X indicates the wires cross
+        In0         In1
+         |           |
+        FAN1-|     FAN2--|
+         |   |       |   |
+         |  NOT1     |  NOT2
+         |   |       |   |
+In2------O---O-------O---O----AND1------|
+         |   |-------O---O----|         |
+         |   |       |   |----|         |
+         |   |       |   |              |
+In3------O---O-------O---O----AND2----| |
+         |   |-------O---O----|       | |
+         |           |---O----|        OR-----OUT
+         |           |   |            | |
+In4------O-----------O---O----AND3----| |
+         |-----------O---O----|         |
+         |           |   |----|         |
+         |           |                  |
+In5------O-----------O--------AND4------|
+         |-----------O--------|
+                     |--------|
+"""
+class FourToOneMux(Gate):
+    """
+    A four-to-one multiplexer. 
+    Input pins 0 and 1 are the selectors:
+        (0, 0) selects input 2
+        (0, 1) selects input 3
+        (1, 0) selects input 4
+        (1, 1) selects input 5
+    """
+    def __init__(self):
+        super(FourToOneMux, self).__init__(6, 1)
+        self.fan1 = Fan(2)
+        self.fan2 = Fan(2)
+        self.not1 = Not()
+        self.not2 = Not()
+        self.and1 = ThreeWayAnd()
+        self.and2 = ThreeWayAnd()
+        self.and3 = ThreeWayAnd()
+        self.and4 = ThreeWayAnd()
+        self.orGate = FourWayOr()
+
+        # set input pins
+        self.setInPin(0, self.fan1.getInPin(0))
+        self.setInPin(1, self.fan2.getInPin(0))
+        self.setInPin(2, self.and1.getInPin(0))
+        self.setInPin(3, self.and2.getInPin(0))
+        self.setInPin(4, self.and3.getInPin(0))
+        self.setInPin(5, self.and4.getInPin(0))
+
+        self.fan1.getOutPin(0).addConnection(self.and3.getInPin(1))
+        self.fan1.getOutPin(0).addConnection(self.and4.getInPin(1))
+        self.fan1.getOutPin(1).addConnection(self.not1.getInPin(0))
+
+        self.fan2.getOutPin(0).addConnection(self.and2.getInPin(2))
+        self.fan2.getOutPin(0).addConnection(self.and4.getInPin(2))
+        self.fan2.getOutPin(1).addConnection(self.not2.getInPin(0))
+
+        self.not1.getOutPin(0).addConnection(self.and1.getInPin(1))
+        self.not1.getOutPin(0).addConnection(self.and2.getInPin(1))
+
+        self.not2.getOutPin(0).addConnection(self.and1.getInPin(2))
+        self.not2.getOutPin(0).addConnection(self.and3.getInPin(2))
+
+        self.and1.getOutPin(0).addConnection(self.orGate.getInPin(0))
+        self.and2.getOutPin(0).addConnection(self.orGate.getInPin(1))
+        self.and3.getOutPin(0).addConnection(self.orGate.getInPin(2))
+        self.and4.getOutPin(0).addConnection(self.orGate.getInPin(3))
+
+        self.setOutPin(0, self.orGate.getOutPin(0))
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
     print "--------And gate-------"
@@ -310,7 +432,12 @@ if __name__ == '__main__':
     enumeratePins(TwoToOneMux())
     print "--------FourWayOr------"
     enumeratePins(FourWayOr())
-
+    print "--------ThreeWayAnd------"
+    enumeratePins(ThreeWayAnd())
+    print "--------FourWayAnd------"
+    enumeratePins(FourWayAnd())
+    print "--------FourToOneMux----"
+    enumeratePins(FourToOneMux())
     # nodes = map(lambda x: Node(x), range(4))
     # nodes[0].addChild(nodes[1])
     # nodes[0].addChild(nodes[2])
