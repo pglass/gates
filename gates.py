@@ -259,30 +259,28 @@ class TwoToOneMux(Gate):
 		self.notGate.refreshOutputs()
 
 
-# class FourWayOr(Gate):
-# 	def __init__(self):
-# 		super(FourWayOr, self).__init__(4, 1)
-# 		self.or0 = Or()
-# 		self.or1 = Or()
-# 		self.or2 = Or()
-# 		self.pc = PinConnector()
-# 		self.pc.connect(self.or0, 0, self.or2, 0)
-# 		self.pc.connect(self.or1, 0, self.or2, 1)
-# 		self._outputs = self.or2._outputs
-
-# 	def setIn(self, pin, val):
-# 		if not (0 <= pin < self.nInputs):
-# 			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
-# 		self._inputs[pin] = val
-# 		if pin == 0:
-# 			self.or0.setIn(0, val)
-# 		elif pin == 1:
-# 			self.or0.setIn(1, val)
-# 		elif pin == 2:
-# 			self.or1.setIn(0, val)
-# 		elif pin == 3:
-# 			self.or1.setIn(1, val)
-
+#
+# In0----|
+#        OR1----|
+# In1----|      |
+#               OR3----OUT
+# In2----|      |
+#        OR2----|
+# In3----|
+#
+class FourWayOr(Gate):
+	def __init__(self):
+		super(FourWayOr, self).__init__(4, 1)
+		self.or1 = Or()
+		self.or2 = Or()
+		self.or3 = Or()
+		self.setInPin(0, self.or1.getInPin(0))
+		self.setInPin(1, self.or1.getInPin(1))
+		self.setInPin(2, self.or2.getInPin(0))
+		self.setInPin(3, self.or2.getInPin(1))
+		self.or1.getOutPin(0).addConnection(self.or3.getInPin(0))
+		self.or2.getOutPin(0).addConnection(self.or3.getInPin(1))
+		self.setOutPin(0, self.or3.getOutPin(0))
 
 if __name__ == '__main__':
 	print "--------And gate-------"
@@ -301,8 +299,8 @@ if __name__ == '__main__':
 	enumeratePins(Xnor())
 	print "--------TwoToOneMux----"
 	enumeratePins(TwoToOneMux())
-	# print "--------FourWayOr------"
-	# enumeratePins(FourWayOr())
+	print "--------FourWayOr------"
+	enumeratePins(FourWayOr())
 
 	# nodes = map(lambda x: Node(x), range(4))
 	# nodes[0].addChild(nodes[1])
