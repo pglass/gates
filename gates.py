@@ -331,31 +331,29 @@ class FourWayOr(Gate):
         self.setOutPin(0, self.or3.getOutPin(0))
 
 
-"""
-O indicates wires do not cross
-X indicates the wires cross
-        In0         In1
-         |           |
-        FAN1-|     FAN2--|
-         |   |       |   |
-         |  NOT1     |  NOT2
-         |   |       |   |
-In2------O---O-------O---O----AND1------|
-         |   |-------O---O----|         |
-         |   |       |   |----|         |
-         |   |       |   |              |
-In3------O---O-------O---O----AND2----| |
-         |   |-------O---O----|       | |
-         |           |---O----|        OR-----OUT
-         |           |   |            | |
-In4------O-----------O---O----AND3----| |
-         |-----------O---O----|         |
-         |           |   |----|         |
-         |           |                  |
-In5------O-----------O--------AND4------|
-         |-----------O--------|
-                     |--------|
-"""
+
+# O indicates wires do not cross
+#         In0         In1
+#          |           |
+#         FAN1-|      FAN2-|
+#          |   |       |   |
+#          |  NOT1     |  NOT2
+#          |   |       |   |
+# In2------O---O-------O---O----AND1------|
+#          |   |-------O---O----|         |
+#          |   |       |   |----|         |
+#          |   |       |   |              |
+# In3------O---O-------O---O----AND2----| |
+#          |   |-------O---O----|       | |
+#          |           |---O----|        OR-----OUT
+#          |           |   |            | |
+# In4------O-----------O---O----AND3----| |
+#          |-----------O---O----|         |
+#          |           |   |----|         |
+#          |           |                  |
+# In5------O-----------O--------AND4------|
+#          |-----------O--------|
+#                      |--------|
 class FourToOneMux(Gate):
     """
     A four-to-one multiplexer. 
@@ -406,12 +404,78 @@ class FourToOneMux(Gate):
 
         self.setOutPin(0, self.orGate.getOutPin(0))
 
+"""
+O indicates wires do not cross
+In0  In1
+ |    |
+ |   FAN2--XOR---OUT1 (sum)
+ |    |    |
+FAN1--O----|
+ |    |    
+ |    |----| 
+ |         |
+ |---------AND---OUT0 (carry)
 
+"""
+class HalfAdder(Gate):
+    """ A half adder adds two binary digits. """
+    def __init__(self):
+        super(HalfAdder, self).__init__(2, 2)
+        self.fan1 = Fan(2)
+        self.fan2 = Fan(2)
+        self.xorGate = Xor()
+        self.andGate = And()
+        self.setInPin(0, self.fan1.getInPin(0))
+        self.setInPin(1, self.fan2.getInPin(0))
+        
+        self.fan1.getOutPin(0).addConnection(self.xorGate.getInPin(0))
+        self.fan1.getOutPin(1).addConnection(self.andGate.getInPin(0))
+        self.fan2.getOutPin(0).addConnection(self.xorGate.getInPin(1))
+        self.fan2.getOutPin(1).addConnection(self.andGate.getInPin(1))
 
+        self.setOutPin(0, self.andGate.getOutPin(0))
+        self.setOutPin(1, self.xorGate.getOutPin(0))
 
+"""
+i0, i1 are input pins to an internal gate
+o0, o1 are output pins from an internal gate
 
+In0---------FAN1-----|      i1
+             |       XOR-----************* o1
+In1--FAN2----O-------|       * HalfAdder *---------------OUT1 (sum)
+      |      |               *           *
+In2---O------O---------------*************
+      |      |              i0           | o0
+      |      |                           |-------|
+      |      |------------|                      OR-----OUT0 (carry)
+      |                   AND--------------------|
+      |-------------------|
+"""
+class OneBitAdder(Gate):
+    def __init__(self):
+        super(OneBitAdder, self).__init__(3, 2)
+        self.fan1 = Fan(2)
+        self.fan2 = Fan(2)
+        self.xorGate = Xor()
+        self.halfAdder = HalfAdder()
+        self.andGate = And()
+        self.orGate = Or()
 
+        self.setInPin(0, self.fan1.getInPin(0))
+        self.setInPin(1, self.fan2.getInPin(0))
+        self.setInPin(2, self.halfAdder.getInPin(0))
 
+        self.fan1.getOutPin(0).addConnection(self.xorGate.getInPin(0))
+        self.fan1.getOutPin(0).addConnection(self.andGate.getInPin(0))
+        self.fan2.getOutPin(0).addConnection(self.xorGate.getInPin(1))
+        self.fan2.getOutPin(0).addConnection(self.andGate.getInPin(1))
+
+        self.xorGate.getOutPin(0).addConnection(self.halfAdder.getInPin(1))
+
+        self.halfAdder.getOutPin(0).addConnection(self.orGate.getInPin(0))
+        self.andGate.getOutPin(0).addConnection(self.orGate.getInPin(1))
+        self.setOutPin(1, self.halfAdder.getOutPin(1))
+        self.setOutPin(0, self.orGate.getOutPin(0))
 
 if __name__ == '__main__':
     print "--------And gate-------"
@@ -438,6 +502,10 @@ if __name__ == '__main__':
     enumeratePins(FourWayAnd())
     print "--------FourToOneMux----"
     enumeratePins(FourToOneMux())
+    print "--------HalfAdder-------"
+    enumeratePins(HalfAdder())
+    print "--------OneBitAdder-----"
+    enumeratePins(OneBitAdder())
     # nodes = map(lambda x: Node(x), range(4))
     # nodes[0].addChild(nodes[1])
     # nodes[0].addChild(nodes[2])
