@@ -1,6 +1,71 @@
+# A nifty overrides decorator: http://stackoverflow.com/a/8313042
+def overrides(interface_class):
+    def _overrider(method):
+        assert(method.__name__ in dir(interface_class))
+        return method
+    return _overrider
+
+def trueFalseToOnesAndZeroes(x):
+	""" Convert True to 1 and False to 0 """
+	if x:
+		return 1
+	return 0
+
 class GateException(Exception):
 	def __init__(self, msg):
 		super(GateException, self).__init__(msg)
+
+class Pin(object):
+	""" 
+	A Pin has a binary value (either True or False). Subclasses should override the setValue() method
+	to perform other actions when a value is set.
+	"""
+	def __init__(self):
+		self._value = False
+
+	@property
+	def value(self):
+		return self._value
+
+	@value.setter 
+	def value(self, val):
+		self.setValue(val)
+
+	def setValue(self, value):
+		raise NotImplementedError("Don't instantiate this base class (%s)" % self.__class__.__name__)
+
+class InputPin(Pin):
+	""" 
+	An InputPin is associated with a particular Gate.
+	When an InputPin's value is updated, the pin tells the gate to refresh its output.
+	"""
+	def __init__(self, gate):
+		super(InputPin, self).__init__()
+		self.gate = gate
+
+	@overrides(Pin)
+	def setValue(self, value):
+		self._value = bool(value)
+		self.gate.refreshOutputs()
+
+class OutputPin(Pin):
+	"""
+	An OutputPin may be connected to other Pins.
+	When an OutputPin's value is updated, the pin passes the value along
+	to all the pins to which it is connected.
+	"""
+	def __init__(self):
+		super(OutputPin, self).__init__()
+		self.connections = set()
+
+	@overrides(Pin)
+	def setValue(self, value):
+		self._value = bool(value)
+		for pin in self.connections:
+			pin.setValue(self._value)
+
+	def addConnection(self, pin):
+		self.connections.add(pin)
 
 class Gate(object):
 	""" 
@@ -8,51 +73,66 @@ class Gate(object):
 	A Gate has a number of input pins and a number of output pins, indexed from 0.
 	Inputs and outputs are either True or False.
 
-	Subclasses need to override the _recomputeOutputs(),
+	Subclasses need to override the refreshOutputs(),
 	Subclasses should not need to override the setIn() or getOut() methods.
 	"""
 
 	def __init__(self, nInputs = 0, nOutputs = 0):
-		self.nInputs = nInputs
-		self.nOutputs = nOutputs
-		self._inputs = [False] * nInputs
-		self._outputs = [False] * nOutputs
+		self._inputs = [InputPin(self) for i in xrange(nInputs)]
+		self._outputs = [OutputPin() for i in xrange(nOutputs)]
+
+	@property
+	def nInputs(self):
+		return len(self._inputs)
+
+	@property
+	def nOutputs(self):
+		return len(self._outputs)
 
 	def setIn(self, index, value):
 		""" Set the given input to bool(value) """
-		if 0 <= index < len(self._inputs):
-			self._inputs[index] = bool(value)
-			self._recomputeOutputs()
-		else:
-			raise GateException("No input pin %s on this gate." % index)
+		self.getInPin(index).value = value
 
 	def getOut(self, index):
 		""" Get the current value of an output pin """
+		self.getOutPin(index).value
+
+	def getInPin(self, index):
 		if 0 <= index < len(self._inputs):
+			return self._inputs[index]
+		raise GateException("No input pin %s on this gate (%s)." % (index, self.__class__.__name__))
+
+	def getOutPin(self, index):
+		if 0 <= index < len(self._outputs):
 			return self._outputs[index]
-		raise GateException("No output pin %s on this gate." % index)
+		raise GateException("No output pin %s on this gate (%s)." % (index, self.__class__.__name__))
+
+	def setInPin(self, index, pin):
+		if 0 <= index < len(self._inputs):
+			self._inputs[index] = pin
+		else:
+			raise GateException("No input pin %s on this gate (%s)." % (index, self.__class__.__name__))
+
+	def setOutPin(self, index, pin):
+		if 0 <= index < len(self._outputs):
+			self._outputs[index] = pin
+		else:
+			raise GateException("No output pin %s on this gate (%s)." % (index, self.__class__.__name__))
 
 	def _setOut(self, index, value):
-		""" Set an output pin """
 		if 0 <= index < len(self._outputs):
-			self._outputs[index] = value
+			self._outputs[index].value = value
 		else:
-			raise GateException("No output pin %s on gate %s." % (index, self.__class__.__name__))
+			raise GateException("No output pin %s on this gate (%s)." % (index, self.__class__.__name__))
 
-	def _recomputeOutputs(self):
+	def refreshOutputs(self):
 		""" Reimplement in subclass """
 		raise NotImplementedError("Don't instantiate this base class")
 
 	def __str__(self):
-		def TFto10(x):
-			""" Convert True to 1 and False to 0 """
-			if x:
-				return 1
-			return 0
-
 		return "%s<In=%s Out=%s>" % (self.__class__.__name__, 
-									 map(TFto10, self._inputs), 
-									 map(TFto10, self._outputs))
+			map(lambda pin: trueFalseToOnesAndZeroes(pin.value), self._inputs),
+			map(lambda pin: trueFalseToOnesAndZeroes(pin.value), self._outputs))
 
 	def __repr__(self):
 		return str(self)
@@ -61,127 +141,60 @@ class And(Gate):
 	def __init__(self):
 		super(And, self).__init__(2, 1)
 
-	def _recomputeOutputs(self):
-		self._setOut(0, all(self._inputs))
+	@overrides(Gate)
+	def refreshOutputs(self):
+		self._setOut(0, all(map(lambda pin: pin.value, self._inputs)))
 
 class Or(Gate):
 	def __init__(self):
 		super(Or, self).__init__(2, 1)
 
-	def _recomputeOutputs(self):
-		self._setOut(0, any(self._inputs))
+	@overrides(Gate)
+	def refreshOutputs(self):
+		self._setOut(0, any(map(lambda pin: pin.value, self._inputs)))
 
 class Not(Gate):
 	def __init__(self):
 		super(Not, self).__init__(1, 1)
 
-	def _recomputeOutputs(self):
-		self._setOut(0, not self._inputs[0])
+	@overrides(Gate)
+	def refreshOutputs(self):
+		self._setOut(0, not self._inputs[0].value)
 
 class Xor(Gate):
 	def __init__(self):
 		super(Xor, self).__init__(2, 1)
 
-	def _recomputeOutputs(self):
-		self._setOut(0, self._inputs[0] ^ self._inputs[1])
+	@overrides(Gate)
+	def refreshOutputs(self):
+		self._setOut(0, self._inputs[0].value ^ self._inputs[1].value)
 
-class PinConnector(object):
-	"""
-	This is a class to manage connections between pins of different gates.
-	You should generally only need one instance of this class for a set of gates.
-	For example:
-		and1 = And()
-		and2 = And()
-		orGate = Or()
-		p = PinConnector()
-		p.connect(and1, 0, orGate, 0)	# connect output 0 of and1 to input 0 of orGate
-		p.connect(and2, 0, orGate, 1)   # connect output 0 of and2 to input 0 of orGate
-	This works by altering the setIn method of each `and1` and `and2` to additionally
-	copy the new output value to the apprioriate pin on the orGate. That means you
-	can do the following:
-		and1.setIn(0, True)
-		and1.setIn(1, True)
-	And you will see:
-		print orGate.getOut(0) 	# True
+class TwoGateChain(Gate):
+	""" A chain of two gates. """
+	def __init__(self, a, b):
+		super(TwoGateChain, self).__init__()
+		self.a = a
+		self.b = b
+		if a.nOutputs != b.nInputs:
+			raise GateException("Cannot connect %s output pins to %s input pins" % (a.nInputs, b.nOutputs))
+		self._inputs.extend(self.a._inputs)
+		self._outputs.extend(self.b._outputs)
+		for i in xrange(a.nOutputs):
+			self.a.getOutPin(i).addConnection(self.b.getInPin(i))
 
-
-	WARNING: This does not handle recursive connections
-	"""
+class Nand(TwoGateChain):
 	def __init__(self):
-		self._connections = {}
+		super(Nand, self).__init__(And(), Not())
 
-	def connect(self, fromGate, fromPin, toGate, toPin):
-		""" Connect ouput pin `fromPin` on gate `fromGate` to the input pin `toPin` on gate `toGate` """
-		entry = (fromPin, toGate, toPin)
-		if fromGate in self._connections:
-			self._connections[fromGate].append(entry)
-		else:
-			self._connections[fromGate] = [entry]
-
-		# alter fromGate.setIn to update the pins it's connected to
-		setIn = fromGate.setIn
-		def f(p, v):
-			setIn(p, bool(v))
-			for (fromPin, toGate, toPin) in self._connections[fromGate]:
-				toGate.setIn(toPin, fromGate.getOut(fromPin))
-		fromGate.setIn = f
-		for i, v in enumerate(fromGate._inputs):
-			fromGate.setIn(i, v)
-
-	def __str__(self):
-		result = "PinConnector["
-		for gate, entry in self._connections.iteritems():
-			result += "\n  %s -> %s," % (gate, entry)
-		if result.endswith(','):
-			result = result[:-1] + "\n"
-		return result + "]"
-
-	def __repr__(self):
-		return str(self)
-
-class Nand(Gate):
-	""" A NAND gate created with an AND and a NOT gate """
+class Nor(TwoGateChain):
 	def __init__(self):
-		super(Nand, self).__init__(2, 1)
-		self.andGate = And()
-		self.notGate = Not()
-		self.pc = PinConnector()
-		self.pc.connect(self.andGate, 0, self.notGate, 0)
-		self._inputs = self.andGate._inputs
-		self._outputs = self.notGate._outputs
+		super(Nor, self).__init__(Or(), Not())
 
-	def setIn(self, pin, value):
-		self.andGate.setIn(pin, value)
-
-class Nor(Gate):
-	""" A NOR gate created with and OR and a NOT """
+class Xnor(TwoGateChain):
 	def __init__(self):
-		super(Nor, self).__init__(2, 1)
-		self.orGate = Or()
-		self.notGate = Not()
-		self.pc = PinConnector()
-		self.pc.connect(self.orGate, 0, self.notGate, 0)
-		self._inputs = self.orGate._inputs
-		self._outputs = self.notGate._outputs
+		super(Xnor, self).__init__(Xor(), Not())
 
-	def setIn(self, pin, value):
-		self.orGate.setIn(pin, value)
-
-class Xnor(Gate):
-	""" An XNOR gate create with an XOR and a NOT """
-	def __init__(self):
-		super(Xnor, self).__init__(2, 1)
-		self.xorGate = Xor()
-		self.notGate = Not()
-		self.pc = PinConnector()
-		self.pc.connect(self.xorGate, 0, self.notGate, 0)
-		self._inputs = self.xorGate._inputs
-		self._outputs = self.notGate._outputs
-
-	def setIn(self, pin, value):
-		self.xorGate.setIn(pin, value)
-
-def cross_product(x, y):
+def cross_product(x, y): 
 	return [[a, b] for a in x for b in y]
 
 def cross(x, size):
@@ -199,12 +212,12 @@ def enumeratePins(gate):
 		print gate
 
 #
-# In1-----------AND--------|
-# In0------NOT---|         |
+# In1-----------AND1--------|
+# In0------NOT---|          |
 #	   |                   OR---OUT
-#      |---------|         |
-#				 |         |
-# In2-----------AND--------|
+#      |---------|          |
+#				 |          |
+# In2-----------AND2--------|
 #
 # Here In0 is the selector.
 #	In0 = 0 selects In1
@@ -220,53 +233,55 @@ class TwoToOneMux(Gate):
 	"""
 	def __init__(self):
 		super(TwoToOneMux, self).__init__(3, 1)
-		self.pc = PinConnector()
-		self.and0 = And()
 		self.and1 = And()
+		self.and2 = And()
 		self.notGate = Not()
 		self.orGate = Or()
 
-		self.pc.connect(self.and0, 0, self.orGate, 0)
-		self.pc.connect(self.and1, 0, self.orGate, 1)
-		# the selector is hooked up to pin 1 on each of the and gates
-		self.pc.connect(self.notGate, 0, self.and0, 1)
-		self._outputs = self.orGate._outputs
+		# set the NOT inputs
+		self.notGate.setInPin(0, self.getInPin(0))
+		# set the AND1 inputs
+		self.and1.setInPin(0, self.getInPin(1))
+		self.notGate.getOutPin(0).addConnection(self.and1.getInPin(1))
+		# set the AND2 inputs		
+		self.and2.setInPin(0, self.getInPin(2))
+		self.and2.setInPin(1, self.getInPin(0))
+		# set the OR inputs
+		self.and1.getOutPin(0).addConnection(self.orGate.getInPin(0))
+		self.and2.getOutPin(0).addConnection(self.orGate.getInPin(1))
+		# set the outputs
+		self.setOutPin(0, self.orGate.getOutPin(0))
 
-	def setIn(self, pin, val):
-		if not (0 <= pin < self.nInputs):
-			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
-		self._inputs[pin] = val
-		if pin == 0:
-			self.notGate.setIn(0, val)
-			self.and1.setIn(1, val)
-		elif pin == 1:
-			self.and1.setIn(0, val)
-		elif pin == 2:
-			self.and0.setIn(0, val)
+	@overrides(Gate)
+	def refreshOutputs(self):
+		self.and1.refreshOutputs()
+		self.and2.refreshOutputs()
+		self.notGate.refreshOutputs()
 
-class FourWayOr(Gate):
-	def __init__(self):
-		super(FourWayOr, self).__init__(4, 1)
-		self.or0 = Or()
-		self.or1 = Or()
-		self.or2 = Or()
-		self.pc = PinConnector()
-		self.pc.connect(self.or0, 0, self.or2, 0)
-		self.pc.connect(self.or1, 0, self.or2, 1)
-		self._outputs = self.or2._outputs
 
-	def setIn(self, pin, val):
-		if not (0 <= pin < self.nInputs):
-			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
-		self._inputs[pin] = val
-		if pin == 0:
-			self.or0.setIn(0, val)
-		elif pin == 1:
-			self.or0.setIn(1, val)
-		elif pin == 2:
-			self.or1.setIn(0, val)
-		elif pin == 3:
-			self.or1.setIn(1, val)
+# class FourWayOr(Gate):
+# 	def __init__(self):
+# 		super(FourWayOr, self).__init__(4, 1)
+# 		self.or0 = Or()
+# 		self.or1 = Or()
+# 		self.or2 = Or()
+# 		self.pc = PinConnector()
+# 		self.pc.connect(self.or0, 0, self.or2, 0)
+# 		self.pc.connect(self.or1, 0, self.or2, 1)
+# 		self._outputs = self.or2._outputs
+
+# 	def setIn(self, pin, val):
+# 		if not (0 <= pin < self.nInputs):
+# 			raise GateException("%s has no pin %s (only %s pins)" % (self.__class__.__name__, pin, self.nInputs))
+# 		self._inputs[pin] = val
+# 		if pin == 0:
+# 			self.or0.setIn(0, val)
+# 		elif pin == 1:
+# 			self.or0.setIn(1, val)
+# 		elif pin == 2:
+# 			self.or1.setIn(0, val)
+# 		elif pin == 3:
+# 			self.or1.setIn(1, val)
 
 
 if __name__ == '__main__':
@@ -278,16 +293,16 @@ if __name__ == '__main__':
 	enumeratePins(Not())
 	print "--------Xor gate-------"
 	enumeratePins(Xor())
-	print "--------Nand gate------"
-	enumeratePins(Nand())
 	print "--------Nor gate------"
 	enumeratePins(Nor())
+	print "--------Nand gate------"
+	enumeratePins(Nand())
 	print "--------Xnor gate------"
 	enumeratePins(Xnor())
 	print "--------TwoToOneMux----"
 	enumeratePins(TwoToOneMux())
-	print "--------FourWayOr------"
-	enumeratePins(FourWayOr())
+	# print "--------FourWayOr------"
+	# enumeratePins(FourWayOr())
 
 	# nodes = map(lambda x: Node(x), range(4))
 	# nodes[0].addChild(nodes[1])
