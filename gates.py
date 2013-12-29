@@ -1,3 +1,5 @@
+import random
+
 # A nifty overrides decorator: http://stackoverflow.com/a/8313042
 def overrides(interface_class):
     def _overrider(method):
@@ -73,8 +75,7 @@ class Gate(object):
     A Gate has a number of input pins and a number of output pins, indexed from 0.
     Inputs and outputs are either True or False.
 
-    Subclasses need to override the refreshOutputs(),
-    Subclasses should not need to override the setIn() or getOut() methods.
+    Subclasses need to override the refreshOutputs() method
     """
 
     def __init__(self, nInputs = 0, nOutputs = 0):
@@ -90,8 +91,12 @@ class Gate(object):
         return len(self._outputs)
 
     def setIn(self, index, value):
-        """ Set the given input to bool(value) """
+        """ Set the value of an input pin """
         self.getInPin(index).value = value
+
+    def getIn(self, index):
+        """ Get the value of an input pin """
+        return self.getInPin(index).value
 
     def getOut(self, index):
         """ Get the current value of an output pin """
@@ -452,6 +457,13 @@ In2---O------O---------------*************
       |-------------------|
 """
 class OneBitAdder(Gate):
+    """
+    A one bit adder can add three bits. Typically, In0 and In1 are the 
+    two operands and In2 is a carry bit from a previous operation.
+
+    Out0 is the carry bit and Out1 is the sum bit.
+    So the value of the computation is 2*Out0 + Out1.
+    """
     def __init__(self):
         super(OneBitAdder, self).__init__(3, 2)
         self.fan1 = Fan(2)
@@ -477,6 +489,194 @@ class OneBitAdder(Gate):
         self.setOutPin(1, self.halfAdder.getOutPin(1))
         self.setOutPin(0, self.orGate.getOutPin(0))
 
+"""
+
+                 In0   In1              In2   In3              In4   In5             In6   In7
+                  |     |                |     |                |     |               |     |
+                  |     |                |     |                |     |               |     |
+                  |i0   |i1              |i0   |i1              |i0   |i1             |i0   |i1
+              ****************       ****************       ****************      ****************
+In8-----------* OneBitAdder1 *-------* OneBitAdder2 *-------* OneBitAdder3 *------* OneBitAdder4 *-----OUT4
+            i2****************o0   i2****************o0   i2****************o0  i2****************o0
+                    |o1                    |o1                    |o1                   |o1   
+                    |                      |                      |                     |
+                    OUT0                   OUT1                   OUT2                  OUT3
+"""
+class FourBitAdder(Gate):
+    """ 
+    A FourBitAdder can add two four-bit numbers and a one-bit carry.
+    That is, it adds the following:
+              In6  In4  In2  In0
+            + In7  In5  In3  In1
+            +                In8
+        ------------------------
+        Out4 Out3 Out2 Out1 Out0
+    """
+    def __init__(self):
+        super(FourBitAdder, self).__init__(9, 5)
+        self.oneBitAdder1 = OneBitAdder()
+        self.oneBitAdder2 = OneBitAdder()
+        self.oneBitAdder3 = OneBitAdder()
+        self.oneBitAdder4 = OneBitAdder()
+
+        self.setInPin(0, self.oneBitAdder1.getInPin(0))
+        self.setInPin(1, self.oneBitAdder1.getInPin(1))
+        self.setInPin(2, self.oneBitAdder2.getInPin(0))
+        self.setInPin(3, self.oneBitAdder2.getInPin(1))
+        self.setInPin(4, self.oneBitAdder3.getInPin(0))
+        self.setInPin(5, self.oneBitAdder3.getInPin(1))
+        self.setInPin(6, self.oneBitAdder4.getInPin(0))
+        self.setInPin(7, self.oneBitAdder4.getInPin(1))
+        self.setInPin(8, self.oneBitAdder1.getInPin(2))
+
+        self.oneBitAdder1.getOutPin(0).addConnection(self.oneBitAdder2.getInPin(2))
+        self.oneBitAdder2.getOutPin(0).addConnection(self.oneBitAdder3.getInPin(2))
+        self.oneBitAdder3.getOutPin(0).addConnection(self.oneBitAdder4.getInPin(2))
+
+        self.setOutPin(0, self.oneBitAdder1.getOutPin(1))
+        self.setOutPin(1, self.oneBitAdder2.getOutPin(1))
+        self.setOutPin(2, self.oneBitAdder3.getOutPin(1))
+        self.setOutPin(3, self.oneBitAdder4.getOutPin(1))
+        self.setOutPin(4, self.oneBitAdder4.getOutPin(0))
+
+    def __str__(self):
+        return "%s<A=%s B=%s c=%s OUT=%s>" % (
+            self.__class__.__name__, 
+            map(lambda pin: trueFalseToOnesAndZeroes(pin.value), [self._inputs[i] for i in [6,4,2,0]]),
+            map(lambda pin: trueFalseToOnesAndZeroes(pin.value), [self._inputs[i] for i in [7,5,3,1]]),
+            trueFalseToOnesAndZeroes(self._inputs[8].value),
+            map(lambda pin: trueFalseToOnesAndZeroes(pin.value), reversed(self._outputs))
+        )
+
+"""
+o0 indicates the output of an internal gate
+               o0
+(Q) OUT0----+----NOR---In0 (reset)
+            |      |
+            |      |
+(set) In1---NOR----+---OUT1 (not Q)
+               o0
+"""
+class SRLatch(Gate):
+    """
+    This is a simple memory circuit that can store one bit.
+
+    An SRLatch has two inputs:
+        In0 is the reset line
+        In1 is the set line
+    There are two output lines, but OUT1 is low when OUT0 is high and (vice versa)
+
+    When In0 and In1 are both False, the outputs remain as they were.
+    When In0 is True and In1 False, we "reset" the memory:
+        OUT0 becomes False and OUT1 becomes True
+        If In0 becomes False, these outputs stay the same.
+    When In0 is False and In1 is True, we "set" the memory:
+        OUT0 becomes True and OUT1 becomes False.
+        If In1 subsequently returns to False, the outputs remain the same due to the feedback loop.
+    If In0 and In1 are both True, then a race condition occurs.
+        The output is undefined in this case.
+
+    NOTE: The feedback loop results in infinite recursion, so this is not implemented 
+    in terms of other gates.
+    """
+
+    def __init__(self):
+        super(SRLatch, self).__init__(2, 2)
+        self._setOut(0, False)
+        self._setOut(1, True)
+
+    @overrides(Gate)
+    def refreshOutputs(self):
+        R = self.getIn(0)
+        S = self.getIn(1)
+        if R and S:         # when both inputs are high a race condition occurs
+            x = bool(random.randint(1, 10) % 2)
+            self._setOut(0, x)
+            self._setOut(1, not x)
+        elif R and not S:   # reset
+            self._setOut(0, False)
+            self._setOut(1, True)
+        elif not R and S:   # set
+            self._setOut(0, True)
+            self._setOut(1, False)
+        # otherwise, R and S both False, so output remains unchanged.
+
+
+"""
+(R) In0-----AND1--|   i0         o0
+            |     |----***********--------OUT0 (Q)
+(E) In2----FAN         * SRLatch *
+            |     |----***********--------OUT1 (not Q)
+(S) In1-----AND2--|    i1        o1
+"""
+class GatedSRLatch(Gate):
+    """
+    This is an SR-latch with an "enable" line.
+    The latch cannot be set or reset when the enable line is low.
+
+    In0 is the "reset" line.
+    In1 is the "set" line.
+    In2 is the "enable" line.
+
+    When the enable line is True, this is equivalent to an SRLatch.
+    When the enable line is False, the reset and set lines are turned off (both become False)
+    """
+    def __init__(self):
+        super(GatedSRLatch, self).__init__(3, 2)
+        self.fan = Fan(2)
+        self.and1 = And()
+        self.and2 = And()
+        self.latch = SRLatch()
+
+        self.setInPin(0, self.and1.getInPin(0))
+        self.setInPin(1, self.and2.getInPin(0))
+        self.setInPin(2, self.fan.getInPin(0))
+
+        self.fan.getOutPin(0).addConnection(self.and1.getInPin(1))
+        self.fan.getOutPin(1).addConnection(self.and2.getInPin(1))
+        self.and1.getOutPin(0).addConnection(self.latch.getInPin(0))
+        self.and2.getOutPin(0).addConnection(self.latch.getInPin(1))
+
+        self.setOutPin(0, self.latch.getOutPin(0))
+        self.setOutPin(1, self.latch.getOutPin(1))
+
+
+"""
+(data)   In0-----FAN-----NOT----|i0             o0
+                 |              ****************------OUT0 (Q)
+(enable) In1-----O--------------* GatedSRLatch *
+                 |            i2*              *
+                 |              ****************------OUT1 (not Q)
+                 |--------------|i1             o1
+
+"""
+class DLatch(Gate):
+    """
+    A DLatch removes the possibilty of an invalid input state in a GatedSRLatch.
+
+    In0 is the "data" line.
+    In1 is the "enable" line.
+
+    Set the enable line to False, to maintain previous state.
+    Set the data line to True to "set" the latch.
+        This sets OUT0 to True and OUT1 to False.
+    SEt the data line to False to "reset" the latch.
+        This set OUT0 to False and OUT1 to True.
+    """
+    def __init__(self):
+        super(DLatch, self).__init__(2, 2)
+        self.fan = Fan(2)
+        self.notGate = Not()
+        self.gsrLatch = GatedSRLatch()
+        self.setInPin(0, self.fan.getInPin(0))
+        self.setInPin(1, self.gsrLatch.getInPin(2))
+        self.fan.getOutPin(0).addConnection(self.notGate.getInPin(0))
+        self.fan.getOutPin(1).addConnection(self.gsrLatch.getInPin(1))
+        self.notGate.getOutPin(0).addConnection(self.gsrLatch.getInPin(0))
+
+        self.setOutPin(0, self.gsrLatch.getOutPin(0))
+        self.setOutPin(1, self.gsrLatch.getOutPin(1))
+
 if __name__ == '__main__':
     print "--------And gate-------"
     enumeratePins(And())
@@ -500,12 +700,51 @@ if __name__ == '__main__':
     enumeratePins(ThreeWayAnd())
     print "--------FourWayAnd------"
     enumeratePins(FourWayAnd())
-    print "--------FourToOneMux----"
-    enumeratePins(FourToOneMux())
+    # print "--------FourToOneMux----"
+    # enumeratePins(FourToOneMux())
     print "--------HalfAdder-------"
     enumeratePins(HalfAdder())
     print "--------OneBitAdder-----"
     enumeratePins(OneBitAdder())
+    # print "--------FourBitAdder----"
+    # enumeratePins(FourBitAdder())
+    print "--------SRLatch---------"
+    sr = SRLatch()
+    sr.setIn(0, True)
+    sr.setIn(1, False)
+    print "set:  ", sr # set
+    sr.setIn(0, False)
+    print "same: ", sr # stays the same
+    sr.setIn(1, False)
+    print "same: ", sr # stays them same
+    sr.setIn(1, True)
+    print "reset:", sr # reset
+    sr.setIn(1, False)
+    print "same: ", sr # stays the same
+    sr.setIn(0, False)
+    print "same: ", sr # stays them same
+    sr.setIn(0, True)
+    sr.setIn(1, True)
+    print "rand: ", sr
+    print "--------GatedSRLatch----"
+    enumeratePins(GatedSRLatch())
+    print "--------DLatch----------"
+    dl = DLatch()
+    print "init: ", dl
+    dl.setIn(1, True)
+    dl.setIn(0, True)
+    print "set:  ", dl # set
+    dl.setIn(1, False)
+    print "same: ", dl # stays the same
+    dl.setIn(1, False)
+    print "same: ", dl # stays them same
+    dl.setIn(1, True)
+    dl.setIn(0, False)
+    print "reset:", dl # reset
+    dl.setIn(1, False)
+    print "same: ", dl # stays the same
+    dl.setIn(0, False)
+    print "same: ", dl # stays them same
     # nodes = map(lambda x: Node(x), range(4))
     # nodes[0].addChild(nodes[1])
     # nodes[0].addChild(nodes[2])
