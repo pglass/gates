@@ -409,19 +409,17 @@ class FourToOneMux(Gate):
 
         self.setOutPin(0, self.orGate.getOutPin(0))
 
-"""
-O indicates wires do not cross
-In0  In1
- |    |
- |   FAN2--XOR---OUT1 (sum)
- |    |    |
-FAN1--O----|
- |    |    
- |    |----| 
- |         |
- |---------AND---OUT0 (carry)
 
-"""
+# O indicates wires do not cross
+# In0  In1
+#  |    |
+#  |   FAN2--XOR---OUT1 (sum)
+#  |    |    |
+# FAN1--O----|
+#  |    |    
+#  |    |----| 
+#  |         |
+#  |---------AND---OUT0 (carry)
 class HalfAdder(Gate):
     """ A half adder adds two binary digits. """
     def __init__(self):
@@ -441,21 +439,19 @@ class HalfAdder(Gate):
         self.setOutPin(0, self.andGate.getOutPin(0))
         self.setOutPin(1, self.xorGate.getOutPin(0))
 
-"""
-i0, i1 are input pins to an internal gate
-o0, o1 are output pins from an internal gate
-
-In0---------FAN1-----|      i1
-             |       XOR-----************* o1
-In1--FAN2----O-------|       * HalfAdder *---------------OUT1 (sum)
-      |      |               *           *
-In2---O------O---------------*************
-      |      |              i0           | o0
-      |      |                           |-------|
-      |      |------------|                      OR-----OUT0 (carry)
-      |                   AND--------------------|
-      |-------------------|
-"""
+# i0, i1 are input pins to an internal gate
+# o0, o1 are output pins from an internal gate
+#
+# In0---------FAN1-----|      i1
+#              |       XOR-----************* o1
+# In1--FAN2----O-------|       * HalfAdder *---------------OUT1 (sum)
+#       |      |               *           *
+# In2---O------O---------------*************
+#       |      |              i0           | o0
+#       |      |                           |-------|
+#       |      |------------|                      OR-----OUT0 (carry)
+#       |                   AND--------------------|
+#       |-------------------|
 class OneBitAdder(Gate):
     """
     A one bit adder can add three bits. Typically, In0 and In1 are the 
@@ -489,19 +485,16 @@ class OneBitAdder(Gate):
         self.setOutPin(1, self.halfAdder.getOutPin(1))
         self.setOutPin(0, self.orGate.getOutPin(0))
 
-"""
-
-                 In0   In1              In2   In3              In4   In5             In6   In7
-                  |     |                |     |                |     |               |     |
-                  |     |                |     |                |     |               |     |
-                  |i0   |i1              |i0   |i1              |i0   |i1             |i0   |i1
-              ****************       ****************       ****************      ****************
-In8-----------* OneBitAdder1 *-------* OneBitAdder2 *-------* OneBitAdder3 *------* OneBitAdder4 *-----OUT4
-            i2****************o0   i2****************o0   i2****************o0  i2****************o0
-                    |o1                    |o1                    |o1                   |o1   
-                    |                      |                      |                     |
-                    OUT0                   OUT1                   OUT2                  OUT3
-"""
+#                  In0   In1              In2   In3              In4   In5             In6   In7
+#                   |     |                |     |                |     |               |     |
+#                   |     |                |     |                |     |               |     |
+#                   |i0   |i1              |i0   |i1              |i0   |i1             |i0   |i1
+#               ****************       ****************       ****************      ****************
+# In8-----------* OneBitAdder1 *-------* OneBitAdder2 *-------* OneBitAdder3 *------* OneBitAdder4 *-----OUT4
+#             i2****************o0   i2****************o0   i2****************o0  i2****************o0
+#                     |o1                    |o1                    |o1                   |o1   
+#                     |                      |                      |                     |
+#                     OUT0                   OUT1                   OUT2                  OUT3
 class FourBitAdder(Gate):
     """ 
     A FourBitAdder can add two four-bit numbers and a one-bit carry.
@@ -548,15 +541,13 @@ class FourBitAdder(Gate):
             map(lambda pin: trueFalseToOnesAndZeroes(pin.value), reversed(self._outputs))
         )
 
-"""
-o0 indicates the output of an internal gate
-               o0
-(Q) OUT0----+----NOR---In0 (reset)
-            |      |
-            |      |
-(set) In1---NOR----+---OUT1 (not Q)
-               o0
-"""
+# o0 indicates the output of an internal gate
+#                o0
+# (Q) OUT0----+----NOR---In0 (reset)
+#             |      |
+#             |      |
+# (set) In1---NOR----+---OUT1 (not Q)
+#                o0
 class SRLatch(Gate):
     """
     This is a simple memory circuit that can store one bit.
@@ -576,8 +567,8 @@ class SRLatch(Gate):
     If In0 and In1 are both True, then a race condition occurs.
         The output is undefined in this case.
 
-    NOTE: The feedback loop results in infinite recursion, so this is not implemented 
-    in terms of other gates.
+    NOTE: The feedback loop results in infinite recursion. 
+          I'm lazy so this is not implemented in terms of other gates.
     """
 
     def __init__(self):
@@ -602,13 +593,11 @@ class SRLatch(Gate):
         # otherwise, R and S both False, so output remains unchanged.
 
 
-"""
-(R) In0-----AND1--|   i0         o0
-            |     |----***********--------OUT0 (Q)
-(E) In2----FAN         * SRLatch *
-            |     |----***********--------OUT1 (not Q)
-(S) In1-----AND2--|    i1        o1
-"""
+# (R) In0-----AND1--|   i0         o0
+#             |     |----***********--------OUT0 (Q)
+# (E) In2----FAN         * SRLatch *
+#             |     |----***********--------OUT1 (not Q)
+# (S) In1-----AND2--|    i1        o1
 class GatedSRLatch(Gate):
     """
     This is an SR-latch with an "enable" line.
@@ -641,15 +630,12 @@ class GatedSRLatch(Gate):
         self.setOutPin(1, self.latch.getOutPin(1))
 
 
-"""
-(data)   In0-----FAN-----NOT----|i0             o0
-                 |              ****************------OUT0 (Q)
-(enable) In1-----O--------------* GatedSRLatch *
-                 |            i2*              *
-                 |              ****************------OUT1 (not Q)
-                 |--------------|i1             o1
-
-"""
+# (data)   In0-----FAN-----NOT----|i0             o0
+#                  |              ****************------OUT0 (Q)
+# (enable) In1-----O--------------* GatedSRLatch *
+#                  |            i2*              *
+#                  |              ****************------OUT1 (not Q)
+#                  |--------------|i1             o1
 class DLatch(Gate):
     """
     A DLatch removes the possibilty of an invalid input state in a GatedSRLatch.
@@ -677,6 +663,186 @@ class DLatch(Gate):
         self.setOutPin(0, self.gsrLatch.getOutPin(0))
         self.setOutPin(1, self.gsrLatch.getOutPin(1))
 
+# In3-------------------|
+#                       OR------OUT0
+# In2     |-------------|
+#         |
+# In1----FAN----NOT2----|
+#                       AND-----OUT1
+# In0----NOT1-----------|
+class FourToTwoLineEncoder(Gate):
+    """
+    A 4-bit one-hot to 2-bit binary encoder.
+    "One-hot" refers to a binary string with all digits zero except one.
+
+    So this encodes as follows:
+        In3 In2 In1 In0     Out1 Out0
+         0   0   0   1  -->  0    0
+         0   0   1   0  -->  0    1
+         0   1   0   0  -->  1    0
+         1   0   0   0  -->  1    1
+    All other inputs are invalid.
+    """
+    def __init__(self):
+        super(FourToTwoLineEncoder, self).__init__(4, 2)
+        self.fan = Fan(2)
+        self.not1 = Not()
+        self.not2 = Not()
+        self.orGate = Or()
+        self.andGate = And()
+        self.setInPin(0, self.not1.getInPin(0))
+        self.setInPin(1, self.fan.getInPin(0))
+        self.setInPin(3, self.orGate.getInPin(0))
+
+        self.fan.getOutPin(0).addConnection(self.orGate.getInPin(1))
+        self.fan.getOutPin(1).addConnection(self.not2.getInPin(0))
+        self.not2.getOutPin(0).addConnection(self.andGate.getInPin(0))
+        self.not1.getOutPin(0).addConnection(self.andGate.getInPin(1))
+
+        self.setOutPin(0, self.andGate.getOutPin(0))
+        self.setOutPin(1, self.orGate.getOutPin(0))
+
+    @overrides(Gate)
+    def refreshOutputs(self):
+        # we don't use input pin 2, so it tries to call Gate.refreshOutputs which throws an error
+        pass
+
+# In0---FAN1---NOT1-----------FAN4---|
+#       |                       |    AND1------OUT0
+# In1---O--FAN2---NOT2---FAN3---O----|
+#       |    |            |     |
+#      FAN5--O------------O-----O----|
+#       |    |            |     |    AND2------OUT1
+#       |    |            |-----O----|
+#       |    |                  |
+#       |    FAN6---------------O----|
+#       |    |                  |    AND3------OUT2
+#       |    |                  |----|
+#       |    |
+#       |    |-----------------------|
+#       |                            AND4------OUT3
+#       |----------------------------|
+class TwoToFourLineDecoder(Gate):
+    """ 
+    A 2-bit binary to 4-bit one-hot decoder.
+    This undoes the work of the FourToTwoLineEncoder.
+
+    In particular,
+        In1 In0     Out3 Out2 Out1 Out0
+         0   0  -->  0    0    0    1 
+         0   1  -->  0    0    1    0 
+         1   0  -->  0    1    0    0 
+         1   1  -->  1    0    0    0 
+    """
+    def __init__(self):
+        super(TwoToFourLineDecoder, self).__init__(2, 4)
+        self.fan1 = Fan(2)
+        self.fan2 = Fan(2)
+        self.fan3 = Fan(2)
+        self.fan4 = Fan(2)
+        self.fan5 = Fan(2)
+        self.fan6 = Fan(2)
+        self.not1 = Not()
+        self.not2 = Not()
+        self.and1 = And()
+        self.and2 = And()
+        self.and3 = And()
+        self.and4 = And()
+
+        self.setInPin(0, self.fan1.getInPin(0))
+        self.setInPin(1, self.fan2.getInPin(0))
+
+        self.not1.getOutPin(0).addConnection(self.fan4.getInPin(0))
+        self.not2.getOutPin(0).addConnection(self.fan3.getInPin(0))
+
+        self.fan1.getOutPin(0).addConnection(self.not1.getInPin(0))
+        self.fan1.getOutPin(1).addConnection(self.fan5.getInPin(0))
+        self.fan2.getOutPin(0).addConnection(self.not2.getInPin(0))
+        self.fan2.getOutPin(1).addConnection(self.fan6.getInPin(0))
+        self.fan3.getOutPin(0).addConnection(self.and1.getInPin(1))
+        self.fan3.getOutPin(1).addConnection(self.and2.getInPin(1))
+        self.fan4.getOutPin(0).addConnection(self.and1.getInPin(0))
+        self.fan4.getOutPin(1).addConnection(self.and3.getInPin(1))
+        self.fan5.getOutPin(0).addConnection(self.and2.getInPin(0))
+        self.fan5.getOutPin(1).addConnection(self.and4.getInPin(1))
+        self.fan6.getOutPin(0).addConnection(self.and3.getInPin(0))
+        self.fan6.getOutPin(1).addConnection(self.and4.getInPin(0))
+
+        self.setOutPin(0, self.and1.getOutPin(0))
+        self.setOutPin(1, self.and2.getOutPin(0))
+        self.setOutPin(2, self.and3.getOutPin(0))
+        self.setOutPin(3, self.and4.getOutPin(0))
+
+#              In1         In0
+#               |           |
+#               |i1         |i0
+#          ************************
+#          *                      *
+#          * TwoToFourLineDecoder *
+#          *                      *
+#          ************************
+#            |o0   |o1   |o2   |o3
+#            |     |     |     |
+# In2--+-----O-----O-----O-----O----|
+#      |     |     |     |     |    AND3----OUT3
+#      |     |     |     |     |----|
+#      |     |     |     |     
+#      +-----O-----O-----O-----O----|  
+#      |     |     |     |          AND2----OUT2
+#      |     |     |     |----------|
+#      |     |     |
+#      +-----O-----O----------------|
+#      |     |     |                AND1----OUT1
+#      |     |     |----------------|
+#      |     |
+#      |-----O----------------------|
+#            |                      AND0----OUT0
+#            |----------------------|
+class OneToFourLineDemux(Gate):
+    """
+    A OneToFourLineDemux has two selector lines of inputs and one line of data input.
+    There are four lines of output. Using the selectors, you can choose to send the 
+    data to a particular output line.
+
+    Output lines can be selected as follows.
+        In1  In0
+         0    0  --> OUT0
+         0    1  --> OUT1
+         1    0  --> OUT2
+         1    1  --> OUT3
+    When an output line is selected, all other output lines will be low.
+    The data line is In2.
+    """
+    def __init__(self):
+        super(OneToFourLineDemux, self).__init__(3, 4)
+        self.fan = Fan(4)
+        self.decoder = TwoToFourLineDecoder()
+        self.and0 = And()
+        self.and1 = And()
+        self.and2 = And()
+        self.and3 = And()
+
+        self.setInPin(0, self.decoder.getInPin(0))
+        self.setInPin(1, self.decoder.getInPin(1))
+        self.setInPin(2, self.fan.getInPin(0))
+
+        self.fan.getOutPin(3).addConnection(self.and3.getInPin(0))
+        self.fan.getOutPin(2).addConnection(self.and2.getInPin(0))
+        self.fan.getOutPin(1).addConnection(self.and1.getInPin(0))
+        self.fan.getOutPin(0).addConnection(self.and0.getInPin(0))
+
+        self.decoder.getOutPin(0).addConnection(self.and0.getInPin(1))
+        self.decoder.getOutPin(1).addConnection(self.and1.getInPin(1))
+        self.decoder.getOutPin(2).addConnection(self.and2.getInPin(1))
+        self.decoder.getOutPin(3).addConnection(self.and3.getInPin(1))
+
+        self.setOutPin(0, self.and0.getOutPin(0))
+        self.setOutPin(1, self.and1.getOutPin(0))
+        self.setOutPin(2, self.and2.getOutPin(0))
+        self.setOutPin(3, self.and3.getOutPin(0))
+
+
+
 if __name__ == '__main__':
     print "--------And gate-------"
     enumeratePins(And())
@@ -700,8 +866,8 @@ if __name__ == '__main__':
     enumeratePins(ThreeWayAnd())
     print "--------FourWayAnd------"
     enumeratePins(FourWayAnd())
-    # print "--------FourToOneMux----"
-    # enumeratePins(FourToOneMux())
+    print "--------FourToOneMux----"
+    enumeratePins(FourToOneMux())
     print "--------HalfAdder-------"
     enumeratePins(HalfAdder())
     print "--------OneBitAdder-----"
@@ -726,8 +892,10 @@ if __name__ == '__main__':
     sr.setIn(0, True)
     sr.setIn(1, True)
     print "rand: ", sr
+
     print "--------GatedSRLatch----"
     enumeratePins(GatedSRLatch())
+
     print "--------DLatch----------"
     dl = DLatch()
     print "init: ", dl
@@ -745,26 +913,10 @@ if __name__ == '__main__':
     print "same: ", dl # stays the same
     dl.setIn(0, False)
     print "same: ", dl # stays them same
-    # nodes = map(lambda x: Node(x), range(4))
-    # nodes[0].addChild(nodes[1])
-    # nodes[0].addChild(nodes[2])
-    # nodes[1].addChild(nodes[2])
-    # nodes[1].addChild(nodes[3])
-    # nodes[2].addChild(nodes[1])
-    # nodes[2].addChild(nodes[3])
-    # Node.printGraph(nodes[0])
 
-    # and1 = And()
-    # and2 = And()
-    # orGate = Or()
-    # p = PinConnector()
-    # print p
-    # p.connect(and1, 0, orGate, 0)
-    # p.connect(and2, 0, orGate, 1)
-    # print p
-    # and1.setIn(0, True)
-    # print and1
-    # print orGate
-    # and1.setIn(1, True)
-    # print and1
-    # print orGate
+    print "--------FourToTwoLineEncoder------"
+    enumeratePins(FourToTwoLineEncoder())
+    print "--------TwoToFourLineDecoder------"
+    enumeratePins(TwoToFourLineDecoder())
+    print "--------OneToFourLineDemux--------"
+    enumeratePins(OneToFourLineDemux())
